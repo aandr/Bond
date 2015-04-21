@@ -30,7 +30,7 @@
 import Foundation
 
 public class BondBox<T> {
-  weak var bond: Bond<T>?
+  public weak var bond: Bond<T>?
   public init(_ b: Bond<T>) { bond = b }
 }
 
