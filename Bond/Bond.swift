@@ -162,7 +162,7 @@ public class Dynamic<T> {
   }
 
   public let valueBond = Bond<T>()
-  internal var bonds: Set<BondBox<T>> = Set()
+  public var bonds: Set<BondBox<T>> = Set()
 
   private init() {
     _value = nil
