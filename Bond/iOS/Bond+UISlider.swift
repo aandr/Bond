@@ -1,5 +1,5 @@
 //
-//  Bond+UISwitch.swift
+//  Bond+UISlider.swift
 //  Bond
 //
 //  The MIT License (MIT)
@@ -27,18 +27,18 @@
 
 import UIKit
 
-@objc class SwitchDynamicHelper
+@objc class SliderDynamicHelper
 {
-  weak var control: UISwitch?
-  var listener: (Bool -> Void)?
+  weak var control: UISlider?
+  var listener: (Float -> Void)?
   
-  init(control: UISwitch) {
+  init(control: UISlider) {
     self.control = control
     control.addTarget(self, action: Selector("valueChanged:"), forControlEvents: .ValueChanged)
   }
   
-  func valueChanged(control: UISwitch) {
-    self.listener?(control.on)
+  func valueChanged(slider: UISlider) {
+    self.listener?(slider.value)
   }
   
   deinit {
@@ -46,75 +46,77 @@ import UIKit
   }
 }
 
-class SwitchDynamic<T>: InternalDynamic<Bool>
+class SliderDynamic<T>: InternalDynamic<Float>
 {
-  let helper: SwitchDynamicHelper
+  let helper: SliderDynamicHelper
   
-  init(control: UISwitch) {
-    self.helper = SwitchDynamicHelper(control: control)
-    super.init(control.on)
-    self.helper.listener =  { [unowned self] in self.value = $0 }
+  init(control: UISlider) {
+    self.helper = SliderDynamicHelper(control: control)
+    super.init(control.value)
+    self.helper.listener =  { [unowned self] in
+      self.updatingFromSelf = true
+      self.value = $0
+      self.updatingFromSelf = false
+    }
   }
 }
 
-private var onDynamicHandleUISwitch: UInt8 = 0;
+private var designatedBondHandleUISlider: UInt8 = 0;
+private var valueDynamicHandleUISlider: UInt8 = 0;
 
-extension UISwitch /*: Dynamical, Bondable */ {
-  public var dynOn: Dynamic<Bool> {
-    if let d: AnyObject = objc_getAssociatedObject(self, &onDynamicHandleUISwitch) {
-      return (d as? Dynamic<Bool>)!
+extension UISlider /*: Dynamical, Bondable */ {
+  public var dynValue: Dynamic<Float> {
+    if let d: AnyObject = objc_getAssociatedObject(self, &valueDynamicHandleUISlider) {
+      return (d as? Dynamic<Float>)!
     } else {
-      let d = SwitchDynamic<Bool>(control: self)
-      let bond = Bond<Bool>() { [weak self] v in if let s = self { s.on = v } }
+      let d = SliderDynamic<Float>(control: self)
+      
+      let bond = Bond<Float>() { [weak self, weak d] v in
+        if let s = self, d = d where !d.updatingFromSelf {
+          s.value = v
+        }
+      }
+      
       d.bindTo(bond, fire: false, strongly: false)
       d.retain(bond)
-      objc_setAssociatedObject(self, &onDynamicHandleUISwitch, d, objc_AssociationPolicy(OBJC_ASSOCIATION_RETAIN_NONATOMIC))
+      objc_setAssociatedObject(self, &valueDynamicHandleUISlider, d, objc_AssociationPolicy(OBJC_ASSOCIATION_RETAIN_NONATOMIC))
       return d
     }
   }
   
-  public var designatedDynamic: Dynamic<Bool> {
-    return self.dynOn
+  public var designatedDynamic: Dynamic<Float> {
+    return self.dynValue
   }
   
-  public var designatedBond: Bond<Bool> {
-    return self.dynOn.valueBond
+  public var designatedBond: Bond<Float> {
+    return self.dynValue.valueBond
   }
 }
 
-public func ->> (left: UISwitch, right: Bond<Bool>) {
+public func ->> (left: UISlider, right: Bond<Float>) {
   left.designatedDynamic ->> right
 }
 
-public func ->> <U: Bondable where U.BondType == Bool>(left: UISwitch, right: U) {
+public func ->> <U: Bondable where U.BondType == Float>(left: UISlider, right: U) {
   left.designatedDynamic ->> right.designatedBond
 }
 
-public func ->> (left: UISwitch, right: UIButton) {
+public func ->> (left: UISlider, right: UISlider) {
   left.designatedDynamic ->> right.designatedBond
 }
 
-public func ->> (left: UISwitch, right: UISwitch) {
-  left.designatedDynamic ->> right.designatedBond
-}
-
-public func ->> <T: Dynamical where T.DynamicType == Bool>(left: T, right: UISwitch) {
-  left.designatedDynamic ->> right.designatedBond
-}
-
-public func ->> (left: Dynamic<Bool>, right: UISwitch) {
+public func ->> (left: Dynamic<Float>, right: UISlider) {
   left ->> right.designatedBond
 }
 
-public func <->> (left: UISwitch, right: UISwitch) {
+public func <->> (left: UISlider, right: UISlider) {
   left.designatedDynamic <->> right.designatedDynamic
 }
 
-public func <->> (left: Dynamic<Bool>, right: UISwitch) {
+public func <->> (left: Dynamic<Float>, right: UISlider) {
   left <->> right.designatedDynamic
 }
 
-public func <->> (left: UISwitch, right: Dynamic<Bool>) {
+public func <->> (left: UISlider, right: Dynamic<Float>) {
   left.designatedDynamic <->> right
 }
-

@@ -25,6 +25,8 @@
 //  THE SOFTWARE.
 //
 
+import QuartzCore
+
 // MARK: Map
 
 public func map<T, U>(dynamic: Dynamic<T>, f: T -> U) -> Dynamic<U> {
@@ -175,7 +177,7 @@ public func zip<T, U>(d1: Dynamic<T>, d2: Dynamic<U>) -> Dynamic<(T, U)> {
 
 // MARK: Skip
 
-public func _skip<T>(dynamic: Dynamic<T>, var count: Int) -> Dynamic<T> {
+internal func _skip<T>(dynamic: Dynamic<T>, var count: Int) -> Dynamic<T> {
   let dyn = InternalDynamic<T>()
   
   if count <= 0 {
@@ -214,4 +216,79 @@ public func any<T>(dynamics: [Dynamic<T>]) -> Dynamic<T> {
   }
   
   return dyn
+}
+
+// MARK: Throttle
+
+internal func _throttle<T>(dynamic: Dynamic<T>, seconds: Double, queue: dispatch_queue_t) -> Dynamic<T> {
+  let dyn = InternalDynamic<T>()
+  var shouldDispatch: Bool = true
+  
+  let bond = Bond<T> { _ in
+    if shouldDispatch {
+      shouldDispatch = false
+      let delay = dispatch_time(DISPATCH_TIME_NOW, Int64(seconds * Double(NSEC_PER_SEC)))
+      dispatch_after(delay, queue) { [weak dyn, weak dynamic] in
+        if let dyn = dyn, dynamic = dynamic {
+          dyn.value = dynamic.value
+        }
+        shouldDispatch = true
+      }
+    }
+  }
+  
+  dyn.retain(bond)
+  dynamic.bindTo(bond, fire: false)
+  
+  return dyn
+}
+
+public func throttle<T>(dynamic: Dynamic<T>, seconds: Double, queue: dispatch_queue_t = dispatch_get_main_queue()) -> Dynamic<T> {
+    return _throttle(dynamic, seconds, queue)
+}
+
+// MARK: deliverOn
+
+internal func _deliver<T>(dynamic: Dynamic<T>, on queue: dispatch_queue_t) -> Dynamic<T> {
+  let dyn = InternalDynamic<T>()
+  
+  if let value = dynamic._value {
+    dyn.value = value
+  }
+  
+  let bond = Bond<T> { [weak dyn] t in
+    dispatch_async(queue) {
+      dyn?.value = t
+    }
+  }
+  
+  dyn.retain(bond)
+  dynamic.bindTo(bond, fire: false)
+  
+  return dyn
+}
+
+public func deliver<T>(dynamic: Dynamic<T>, on queue: dispatch_queue_t) -> Dynamic<T> {
+  return _deliver(dynamic, on: queue)
+}
+
+// MARK: Distinct
+
+internal func _distinct<T: Equatable>(dynamic: Dynamic<T>) -> Dynamic<T> {
+  let dyn = InternalDynamic<T>(dynamic.value)
+
+  let bond = Bond<T> { [weak dyn] v in
+    if v != dyn?.value {
+      dyn?.value = v
+    }
+  }
+
+  dyn.retain(bond)
+  dynamic.bindTo(bond, fire: false)
+
+  return dyn
+}
+
+public func distinct<T: Equatable>(dynamic: Dynamic<T>) -> Dynamic<T> {
+  return _distinct(dynamic)
 }

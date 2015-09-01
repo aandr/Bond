@@ -55,10 +55,10 @@ class ReduceTests: XCTestCase {
     XCTAssert(r.valid == true, "Should not be faulty")
     
     d1.value = 2
-    XCTAssert(r.value == 4, "Value after first dynamic chnage")
+    XCTAssert(r.value == 4, "Value after first dynamic change")
     
     d2.value = 3
-    XCTAssert(r.value == 6, "Value after second dynamic chnage")
+    XCTAssert(r.value == 6, "Value after second dynamic change")
   }
   
   func testReduce3() {
@@ -72,13 +72,13 @@ class ReduceTests: XCTestCase {
     XCTAssert(r.valid == true, "Should not be faulty")
     
     d1.value = 2
-    XCTAssert(r.value == 12, "Value after first dynamic chnage")
+    XCTAssert(r.value == 12, "Value after first dynamic change")
     
     d2.value = 3
-    XCTAssert(r.value == 18, "Value after second dynamic chnage")
+    XCTAssert(r.value == 18, "Value after second dynamic change")
     
     d3.value = 2
-    XCTAssert(r.value == 12, "Value after third dynamic chnage")
+    XCTAssert(r.value == 12, "Value after third dynamic change")
   }
   
   func testRewrite() {
@@ -113,10 +113,10 @@ class ReduceTests: XCTestCase {
     XCTAssert(z.valid == true, "Should not be faulty")
     
     d1.value = 2
-    XCTAssert(z.value.0 == 2 && z.value.1 == 2, "Value after first dynamic chnage")
+    XCTAssert(z.value.0 == 2 && z.value.1 == 2, "Value after first dynamic change")
     
     d2.value = 3
-    XCTAssert(z.value.0 == 2 && z.value.1 == 3, "Value after second dynamic chnage")
+    XCTAssert(z.value.0 == 2 && z.value.1 == 3, "Value after second dynamic change")
   }
   
   func testSkip() {
@@ -148,11 +148,11 @@ class ReduceTests: XCTestCase {
     XCTAssert(a.valid == false, "Should be faulty")
     
     d1.value = 2
-    XCTAssert(a.value == 2, "Value after first dynamic chnage")
+    XCTAssert(a.value == 2, "Value after first dynamic change")
     XCTAssert(a.valid == true, "Should not be faulty")
     
     d2.value = 3
-    XCTAssert(a.value == 3, "Value after second dynamic chnage")
+    XCTAssert(a.value == 3, "Value after second dynamic change")
     XCTAssert(a.valid == true, "Should not be faulty")
   }
   
@@ -192,5 +192,45 @@ class ReduceTests: XCTestCase {
     XCTAssert(m.valid == true, "Should not be faulty")
     XCTAssert(observedValue == "10", "Should update observed value")
     XCTAssert(callCount == 1, "Count should be 1 instead of \(callCount)")
+  }
+  
+  func testDeliverOn() {
+    let d1 = Dynamic<Int>(0)
+    let deliveredOn = deliver(d1, on: dispatch_get_main_queue())
+    
+    let expectation = expectationWithDescription("Dynamic changed")
+    
+    let bond = Bond<Int>() { v in
+      XCTAssert(v == 10, "Value after dynamic change")
+      XCTAssert(NSThread.isMainThread(), "Invalid queue")
+      expectation.fulfill()
+    }
+    
+    deliveredOn ->| bond
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0)) {
+      d1.value = 10
+    }
+    
+    waitForExpectationsWithTimeout(1, handler: nil)
+  }
+
+  func testDistinct() {
+    var values = [Int]()
+    let d1 = Dynamic<Int>(0)
+    let bond = Bond<Int>() { v in values.append(v) }
+
+    let distinctD1 = distinct(d1)
+
+    distinctD1 ->> bond
+
+    d1.value = 1
+    d1.value = 2
+    d1.value = 2
+    d1.value = 3
+    d1.value = 3
+    d1.value = 3
+
+    XCTAssert(values == [0, 1, 2, 3], "Values should equal [0, 1, 2, 3] instead of \(values)")
   }
 }

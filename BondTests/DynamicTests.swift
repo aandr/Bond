@@ -15,10 +15,12 @@ class DynamicTests: XCTestCase {
   func testValueChangeWithOneListener() {
     let dynamicInt = Dynamic<Int>(0)
     var newValue = NSNotFound
-    let intBond = Bond<Int>({ value in
+    
+    let intBond = Bond<Int> { value in
       newValue = value
-    })
-    dynamicInt.bonds.append(BondBox<Int>(intBond))
+    }
+    
+    dynamicInt.bindTo(intBond)
     
     // act: change the value to 1
     dynamicInt.value = 1
@@ -38,7 +40,7 @@ class DynamicTests: XCTestCase {
         newValues[i] = value
       })
       bonds.append(bond)
-      dynamicInt.bonds.append(BondBox<Int>(bond))
+      dynamicInt.bindTo(bond)
     }
     
     // act: change the value to 1
@@ -48,6 +50,26 @@ class DynamicTests: XCTestCase {
     for i in 0..<10 {
       XCTAssertEqual(newValues[i], 1, "New value at index \(i) is incorrect")
     }
+  }
+
+  func testConsecutiveBonding() {
+    let dynamicInt = Dynamic<Int>(0)
+
+    var counter = 0
+    let intBond = Bond<Int>({ value in
+      counter++
+    })
+
+    // strong reference bonds to avoid premature dealloc
+    dynamicInt ->| intBond
+    dynamicInt ->| intBond
+    dynamicInt ->| intBond
+
+    // act: change the value to 1
+    dynamicInt.value = 1
+
+    // assert that all the listeners were notified
+    XCTAssert(counter == 1, "Bond called more than once")
   }
   
   func testWeakBondRemoval() {
@@ -59,14 +81,14 @@ class DynamicTests: XCTestCase {
     bond1?.bind(dynamic)
     bond2?.bind(dynamic)
 
-    XCTAssert(dynamic.bonds.count == 2, "Initial bonding unsuccessful")
+    XCTAssert(dynamic.numberOfBoundBonds == 2, "Initial bonding unsuccessful")
     
     bond1 = nil
     
     // removal is triggered on next change
     dynamic.value = 1
     
-    XCTAssert(dynamic.bonds.count == 1, "Clearing unsuccessful")
+    XCTAssert(dynamic.numberOfBoundBonds == 1, "Clearing unsuccessful")
   }
   
   func testBiDirectionalBinding() {

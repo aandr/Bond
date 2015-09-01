@@ -1,5 +1,3 @@
-_Notice: Bond v3 is out. Please read this document again if you're using older version._
-
 # Bond, Swift Bond
 
 
@@ -219,7 +217,7 @@ d3.bindTo(d1.valueBond, fire: false, strongly: false)
 
 ### What about UIKit
 
-UIKit views and controls are not, of course, Dynamics and Bonds, so how can they act as agents in Bond word?
+UIKit views and controls are not, of course, Dynamics and Bonds, so how can they act as agents in a Bond world?
 
 Controls and views for which it makes sense to are extended to provide Dynamics for commonly used properties, like UITextField's `text` property, UISlider's `value` property or UISwitch's `on` property.
 
@@ -231,16 +229,17 @@ Following table lists all available Dynamics of UIKit objects:
 |----------------|---------------------------------------------------------|-----------------|
 | UIView         | dynAlpha <br> dynHidden <br> dynBackgroundColor         | --              |
 | UISlider       | dynValue                                                | dynValue        |
-| UILabel        | dynText <br> dynAttributedText                          | dynText         |
+| UILabel        | dynText <br> dynAttributedText <br> dynTextColor        | dynText         |
 | UIProgressView | dynProgress                                             | dynProgress     |
 | UIImageView    | dynImage                                                | dynImage        |
 | UIButton       | dynEnabled <br> dynTitle <br> dynImageForNormalState    | dynEnabled      |
 | UIBarItem      | dynEnabled <br> dynTitle <br> dynImage                  | dynEnabled      |
 | UISwitch       | dynOn                                                   | dynOn           |
-| UITextField    | dynText                                                 | dynText         |
+| UITextField    | dynText <br> dynEnabled                                 | dynText         |
 | UITextView     | dynText <br> dynAttributedText                          | dynText         |
 | UIDatePicker   | dynDate                                                 | dynDate         |
 | UIActivityIndicatorView | dynIsAnimating                                 | dynIsAnimating  |
+| DynamicArray<T> | dynCount                                               | dynCount        |
 
 You might be wondering what _Designated Dynamic_ is. It's way to access most commonly used Dynamic through property `designatedDynamic`. Having common name enables us to define protocol like 
 
@@ -325,6 +324,22 @@ skip<T>(dynamic: Dynamic<T>, count: Int) -> Dynamic<T>
 ```
 
 You can use skip to create a Dynamic that'll not dispatch change events for `count` times. 
+
+#### Throttle
+
+```swift
+throttle<T>(dynamic: Dynamic<T>, seconds: Double, queue: dispatch_queue_t = dispatch_get_main_queue()) -> Dynamic<T>
+```
+
+Throttle function creates a new Dynamic that propagates changes at most once during the interval defined by `seconds` argument. If additional changes occurred while throttling, only the last one will be dispatched. _Note that the last argument defines `queue` to dispatch change events on and defaults to the main queue!_
+
+#### DeliverOn
+
+```swift
+deliver<T>(dynamic: Dynamic<T>, on queue: dispatch_queue_t) -> Dynamic<T>
+```
+
+DeliverOn function creates a new Dynamic whose changes are observer on specified `queue`.
 
 #### Any
 

@@ -31,7 +31,8 @@ import Foundation
 
 public class BondBox<T> {
   public weak var bond: Bond<T>?
-  public init(_ b: Bond<T>) { bond = b }
+  internal var _hash: Int
+  public init(_ b: Bond<T>) { bond = b; _hash = b.hashValue }
 }
 
 public class DynamicBox<T> {
@@ -45,40 +46,40 @@ public class DynamicBox<T> {
 
 public class Bond<T> {
   public typealias Listener = T -> Void
-  
+
   public var listener: Listener?
-  public var bondedDynamics: [Dynamic<T>] = []
-  public var bondedWeakDynamics: [DynamicBox<T>] = []
-  
+  internal var bondedDynamics: [Dynamic<T>] = []
+  internal var bondedWeakDynamics: [DynamicBox<T>] = []
+
   public init() {
   }
-  
+
   public init(_ listener: Listener) {
     self.listener = listener
   }
-  
+
   public func bind(dynamic: Dynamic<T>) {
     bind(dynamic, fire: true, strongly: true)
   }
-  
+
   public func bind(dynamic: Dynamic<T>, fire: Bool) {
     bind(dynamic, fire: fire, strongly: true)
   }
-  
+
   public func bind(dynamic: Dynamic<T>, fire: Bool, strongly: Bool) {
-    dynamic.bonds.append(BondBox(self))
-    
+    dynamic.bonds.insert(BondBox(self))
+
     if strongly {
       self.bondedDynamics.append(dynamic)
     } else {
       self.bondedWeakDynamics.append(DynamicBox(dynamic))
     }
-    
+
     if fire && dynamic.valid {
       self.listener?(dynamic.value)
     }
   }
-  
+
   public func unbindAll() {
     let dynamics = bondedDynamics + bondedWeakDynamics.reduce([Dynamic<T>]()) { memo, value in
       if let dynamic = value.dynamic {
@@ -87,19 +88,11 @@ public class Bond<T> {
         return memo
       }
     }
-    
+
     for dynamic in dynamics {
-      var bondsToKeep: [BondBox<T>] = []
-      for bondBox in dynamic.bonds {
-        if let bond = bondBox.bond {
-          if bond !== self {
-            bondsToKeep.append(bondBox)
-          }
-        }
-      }
-      dynamic.bonds = bondsToKeep
+      dynamic.bonds.remove(BondBox<T>(self))
     }
-    
+
     self.bondedDynamics.removeAll(keepCapacity: true)
     self.bondedWeakDynamics.removeAll(keepCapacity: true)
   }
@@ -108,9 +101,9 @@ public class Bond<T> {
 // MARK: Dynamic
 
 public class Dynamic<T> {
-  
+
   private var dispatchInProgress: Bool = false
-  
+
   internal var _value: T? {
     didSet {
       objc_sync_enter(self)
@@ -122,7 +115,7 @@ public class Dynamic<T> {
       objc_sync_exit(self)
     }
   }
-  
+
   public var value: T {
     set {
       _value = newValue
@@ -135,34 +128,42 @@ public class Dynamic<T> {
       }
     }
   }
-  
+
   public var valid: Bool {
     get {
       return _value != nil
     }
   }
-  
+
+  public var numberOfBoundBonds: Int {
+    return bonds.count
+  }
+
   private func dispatch(value: T) {
-    // clear weak bonds
-    self.bonds = self.bonds.filter {
-      bondBox in bondBox.bond != nil
-    }
-    
     // lock
     self.dispatchInProgress = true
-    
+
+    var emptyBoxes = [BondBox<T>]()
+
     // dispatch change notifications
     for bondBox in self.bonds {
-      bondBox.bond?.listener?(value)
+      if let bond = bondBox.bond {
+        bond.listener?(value)
+      }
+      else {
+        emptyBoxes.append(bondBox)
+      }
     }
-    
+
+    self.bonds.subtractInPlace(emptyBoxes)
+
     // unlock
     self.dispatchInProgress = false
   }
-  
+
   public let valueBond = Bond<T>()
-  public var bonds: [BondBox<T>] = []
-  
+  internal var bonds: Set<BondBox<T>> = Set()
+
   private init() {
     _value = nil
     valueBond.listener = { [unowned self] v in self.value = v }
@@ -172,30 +173,31 @@ public class Dynamic<T> {
     _value = v
     valueBond.listener = { [unowned self] v in self.value = v }
   }
-  
+
   public func bindTo(bond: Bond<T>) {
     bond.bind(self, fire: true, strongly: true)
   }
-  
+
   public func bindTo(bond: Bond<T>, fire: Bool) {
     bond.bind(self, fire: fire, strongly: true)
   }
-  
+
   public func bindTo(bond: Bond<T>, fire: Bool, strongly: Bool) {
     bond.bind(self, fire: fire, strongly: strongly)
   }
 }
 
 public class InternalDynamic<T>: Dynamic<T> {
-  
+
   public override init() {
     super.init()
   }
-  
+
   public override init(_ value: T) {
     super.init(value)
   }
-  
+
+  public var updatingFromSelf: Bool = false
   public var retainedObjects: [AnyObject] = []
   public func retain(object: AnyObject) {
     retainedObjects.append(object)
@@ -227,30 +229,51 @@ public extension Dynamic
   public func map<U>(f: T -> U) -> Dynamic<U> {
     return _map(self, f)
   }
-  
+
   public func filter(f: T -> Bool) -> Dynamic<T> {
     return _filter(self, f)
   }
-  
+
   public func filter(f: (T, T) -> Bool, _ v: T) -> Dynamic<T> {
     return _filter(self) { f($0, v) }
   }
-  
+
   public func rewrite<U>(v:  U) -> Dynamic<U> {
     return _map(self) { _ in return v}
   }
-  
+
   public func zip<U>(v: U) -> Dynamic<(T, U)> {
     return _map(self) { ($0, v) }
   }
-  
+
   public func zip<U>(d: Dynamic<U>) -> Dynamic<(T, U)> {
     return reduce(self, d) { ($0, $1) }
   }
-  
+
   public func skip(count: Int) -> Dynamic<T> {
     return _skip(self, count)
   }
+
+  public func throttle(seconds: Double, queue: dispatch_queue_t = dispatch_get_main_queue()) -> Dynamic<T> {
+    return _throttle(self, seconds, queue)
+  }
 }
 
+// MARK: Equatable/Hashable
+
+extension Bond: Hashable, Equatable {
+  public var hashValue: Int { return unsafeAddressOf(self).hashValue }
+}
+
+public func ==<T>(left: Bond<T>, right: Bond<T>) -> Bool {
+  return unsafeAddressOf(left) == unsafeAddressOf(right)
+}
+
+extension BondBox: Equatable, Hashable {
+  public var hashValue: Int { return _hash }
+}
+
+public func ==<T>(left: BondBox<T>, right: BondBox<T>) -> Bool {
+  return left._hash == right._hash
+}
 
